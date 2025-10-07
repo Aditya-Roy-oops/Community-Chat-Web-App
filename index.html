@@ -117,7 +117,7 @@
   <script>
     // ---------------- CONFIG ----------------
     // Paste your Apps Script Web App URL here
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyDW1sMlkNV8oOzML0nxOsW5n6bMGN_GTJlHWyOpUSttXXzrTCcZla_Tv7lz69CXFgm/exec';
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwUr7q0v1LXRgN61Q-w_DktMsIMhwBOH3GD4de4IILgaBSqW7aVtO8TQuLlOr3XhN1_/exec';
 
     // Fetch page size
     const PAGE_SIZE = 18;
@@ -214,26 +214,57 @@
     }
 
     // ---------------- SEND message ----------------
-    $('sendBtn').addEventListener('click', async ()=>{
-      const name = $('name').value.trim() || 'Anonymous';
-      const text = $('text').value.trim();
-      const link = $('link').value.trim();
-      const userId = ls.getItem('cc_userId');
-      if(!text && !link && !lastImageDataUrl){ alert('Type something or attach an image/link.'); return; }
-      const payload = { action:'add', name, text, link, ts: isoNow(), userId, image: lastImageDataUrl };
-      // optimistic UI
-      appendLocalMessage({ id:'pending-'+Date.now(), ts: payload.ts, userId, name, text, link, image: (lastImageDataUrl? lastImageDataUrl: '') }, true);
-      $('sendBtn').disabled = true; $('sendBtn').textContent='Sending...';
-      try{
-        const res = await fetch(SCRIPT_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-        const j = await res.json();
-        // refresh to get authoritative data (or you can replace pending item)
-        await loadMessages(true);
-        $('text').value=''; $('link').value=''; $('imageFile').value=''; $('imgPreviewArea').innerHTML=''; lastImageDataUrl = null;
-      }catch(err){
-        alert('Send failed — check console.'); console.error(err);
-      }finally{ $('sendBtn').disabled=false; $('sendBtn').textContent='Send'; }
+$('sendBtn').addEventListener('click', async () => {
+  const name = $('name').value.trim() || 'Anonymous';
+  const text = $('text').value.trim();
+  const link = $('link').value.trim();
+  const userId = ls.getItem('cc_userId');
+  if (!text && !link && !lastImageDataUrl) {
+    alert('Type something or attach an image/link.');
+    return;
+  }
+
+  const payload = { action: 'add', name, text, link, ts: isoNow(), userId, image: lastImageDataUrl };
+
+  // optimistic UI with local image first
+  const tempId = 'pending-' + Date.now();
+  appendLocalMessage({ id: tempId, ts: payload.ts, userId, name, text, link, image: lastImageDataUrl || '' }, true);
+
+  $('sendBtn').disabled = true;
+  $('sendBtn').textContent = 'Sending...';
+
+  try {
+    const res = await fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
+    const j = await res.json();
+
+    if (j.ok && j.id) {
+      // Replace the pending message ID with actual ID
+      const el = document.querySelector(`.msg[data-id="${tempId}"]`);
+      if (el) el.dataset.id = j.id;
+    }
+
+    // Clear inputs
+    $('text').value = '';
+    $('link').value = '';
+    $('imageFile').value = '';
+    $('imgPreviewArea').innerHTML = '';
+    lastImageDataUrl = null;
+
+    // Refresh feed to get latest messages from server
+    await loadMessages(true);
+
+  } catch (err) {
+    alert('Send failed — check console.');
+    console.error(err);
+  } finally {
+    $('sendBtn').disabled = false;
+    $('sendBtn').textContent = 'Send';
+  }
+});
 
     // ---------------- LOAD / PAGINATION ----------------
     let feedOffset = 0; // how many messages already loaded (0 = newest)
@@ -272,37 +303,45 @@
     }
 
     // append message to feed; optimistic = true places a temporary highlight
-    function appendLocalMessage(m, optimistic=false){
-      const feed = $('feed');
-      // create DOM
-      const el = document.createElement('div'); el.className='msg'; el.dataset.id = m.id;
-      el.innerHTML = `
-        <div class="avatar">${escapeHtml((m.name||'A').slice(0,1).toUpperCase())}</div>
-        <div class="body">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div style="font-weight:700">${escapeHtml(m.name||'Anonymous')}</div>
-            <div class="small">${escapeHtml(new Date(m.ts||m.date||'').toLocaleString())}</div>
-          </div>
-          <div class="meta">${escapeHtml(m.text||'')}</div>
-          ${m.image? `<img class="shared" src="${m.image}" alt="shared image"/>`: ''}
-          ${m.link? `<a class="small" href="${escapeHtml(m.link)}" target="_blank">${escapeHtml(m.link)}</a>` : ''}
-        </div>
-      `;
-      // actions (edit/delete) if owner
-      const myId = ls.getItem('cc_userId');
-      if(m.userId && m.userId === myId){
-        const act = document.createElement('div'); act.className='actions'; act.style.marginLeft='8px';
-        const eb = document.createElement('button'); eb.className='editBtn'; eb.textContent='Edit';
-        const db = document.createElement('button'); db.className='delBtn'; db.textContent='Delete';
-        eb.onclick = ()=> openEdit(m);
-        db.onclick = ()=> doDelete(m.id);
-        el.appendChild(act);
-        act.appendChild(eb); act.appendChild(db);
-      }
-      // optimistic message goes at top
-      if(optimistic) feed.insertBefore(el, feed.firstChild);
-      else feed.insertBefore(el, feed.firstChild);
-    }
+    function appendLocalMessage(m, optimistic = false) {
+  const feed = $('feed');
+  const el = document.createElement('div');
+  el.className = 'msg';
+  el.dataset.id = m.id;
+
+  el.innerHTML = `
+    <div class="avatar">${escapeHtml((m.name || 'A').slice(0, 1).toUpperCase())}</div>
+    <div class="body">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:700">${escapeHtml(m.name || 'Anonymous')}</div>
+        <div class="small">${escapeHtml(new Date(m.ts || m.date || '').toLocaleString())}</div>
+      </div>
+      <div class="meta">${escapeHtml(m.text || '')}</div>
+      ${m.image ? `<img class="shared" src="${m.image}" alt="shared image"/>` : ''}
+      ${m.link ? `<a class="small" href="${escapeHtml(m.link)}" target="_blank">${escapeHtml(m.link)}</a>` : ''}
+    </div>
+  `;
+
+  const myId = ls.getItem('cc_userId');
+  if (m.userId && m.userId === myId) {
+    const act = document.createElement('div');
+    act.className = 'actions';
+    act.style.marginLeft = '8px';
+    const eb = document.createElement('button');
+    eb.className = 'editBtn';
+    eb.textContent = 'Edit';
+    const db = document.createElement('button');
+    db.className = 'delBtn';
+    db.textContent = 'Delete';
+    eb.onclick = () => openEdit(m);
+    db.onclick = () => doDelete(m.id);
+    el.appendChild(act);
+    act.appendChild(eb);
+    act.appendChild(db);
+  }
+
+  feed.insertBefore(el, feed.firstChild);
+}
 
     // ---------------- EDIT / DELETE ----------------
     let editingId = null;
@@ -367,6 +406,7 @@
   </script>
 </body>
 </html>
+
 
 
 
