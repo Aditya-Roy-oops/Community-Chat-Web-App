@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Community Chat</title>
+  <style>
+    :root{
+      --bg:#0b0e12; --card:#0f1318; --muted:#99a0a6; --accent:#7c66ff; --glass: rgba(255,255,255,0.03);
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:#e6eef6;font-family:Inter,Segoe UI,Roboto,system-ui,Arial}
+    .app{max-width:920px;margin:20px auto;padding:16px;}
+    .header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+    .logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#5bc7ff);display:flex;align-items:center;justify-content:center;font-weight:700}
+    h1{font-size:18px;margin:0}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);border-radius:12px;padding:12px;box-shadow:0 6px 18px rgba(2,6,12,0.6)}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    /* composer */
+    .composer{display:flex;gap:12px;padding:12px;margin-top:14px;align-items:flex-start}
+    .composer .left{width:84px;text-align:center}
+    .composer input[type=text], .composer textarea{width:100%;background:transparent;border:1px solid rgba(255,255,255,0.04);padding:10px;border-radius:8px;color:inherit}
+    textarea{min-height:72px;resize:vertical}
+    .controls{display:flex;gap:8px;margin-top:8px;align-items:center}
+    .btn{background:var(--accent);border:none;padding:8px 12px;border-radius:8px;color:#fff;font-weight:600;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.04)}
+    /* feed */
+    .feed{margin-top:18px;display:grid;gap:12px;max-height:62vh;overflow:auto;padding-right:6px}
+    .msg{display:flex;gap:12px;padding:12px;border-radius:10px;background:var(--card);align-items:flex-start}
+    .avatar{width:56px;height:56px;border-radius:10px;background:var(--glass);display:flex;align-items:center;justify-content:center;font-weight:700}
+    .msg .body{flex:1}
+    .meta{font-size:13px;color:var(--muted);margin-bottom:8px}
+    .msg img.shared{max-width:360px;border-radius:10px;margin-top:8px}
+    .link-preview{display:flex;gap:12px;border-radius:8px;padding:10px;background:rgba(255,255,255,0.02);margin-top:8px;align-items:center}
+    .link-preview img{width:84px;height:54px;object-fit:cover;border-radius:6px}
+    .small{font-size:13px;color:var(--muted)}
+    .actions{display:flex;gap:8px}
+    .editBtn,.delBtn{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:13px}
+    .modal{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(2,6,12,0.6);display:flex;align-items:center;justify-content:center}
+    .modal .panel{background:var(--card);padding:16px;border-radius:10px;max-width:680px;width:94%}
+    .hidden{display:none}
+    @media (max-width:700px){
+      .composer{flex-direction:column}.composer .left{width:100%;text-align:left}.avatar{width:46px;height:46px}.feed{max-height:56vh}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <div class="logo">CC</div>
+      <div>
+        <h1>Community Chat</h1>
+        <div class="small">Minimal, dark, hosted on Vercel — images in Google Drive</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="topbar">
+        <div class="small" id="userGreeting">Welcome</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn ghost" id="changeUserBtn">Change Name</button>
+          <button class="btn" id="composeToggle">New</button>
+        </div>
+      </div>
+
+      <!-- Composer -->
+      <div class="composer" id="composer" style="margin-top:12px">
+        <div class="left">
+          <div class="avatar" id="meAvatar">U</div>
+          <div class="small" style="margin-top:6px" id="myNamePreview">Anonymous</div>
+        </div>
+        <div class="right" style="flex:1">
+          <input id="name" type="text" placeholder="Your name" />
+          <textarea id="text" placeholder="Share a thought, link or image..."></textarea>
+          <div class="controls">
+            <input id="link" type="text" placeholder="Optional link (paste a URL)" style="flex:1" />
+            <input id="imageFile" type="file" accept="image/*" />
+            <button class="btn" id="sendBtn">Send</button>
+            <button class="btn ghost" id="refreshBtn">Refresh</button>
+          </div>
+          <div id="linkPreviewArea"></div>
+          <div id="imgPreviewArea"></div>
+        </div>
+      </div>
+
+      <!-- Feed -->
+      <div class="feed" id="feed"></div>
+      <div class="small" style="margin-top:8px;text-align:center;color:var(--muted)" id="feedHint">Loading latest...</div>
+    </div>
+  </div>
+
+  <!-- Edit Modal -->
+  <div class="modal hidden" id="editModal">
+    <div class="panel">
+      <h3>Edit message</h3>
+      <input id="editName" type="text" placeholder="Your name" style="width:100%;margin-bottom:8px;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit" />
+      <textarea id="editText" style="width:100%;min-height:80px;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></textarea>
+      <input id="editLink" type="text" placeholder="Link (optional)" style="width:100%;margin-top:8px;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit" />
+      <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+        <button class="btn ghost" id="cancelEditBtn">Cancel</button>
+        <button class="btn" id="saveEditBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Username Modal -->
+  <div class="modal hidden" id="userModal">
+    <div class="panel">
+      <h3>Welcome — pick a display name</h3>
+      <input id="startupName" type="text" placeholder="Display name" style="width:100%;padding:10px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit" />
+      <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+        <button class="btn ghost" id="skipNameBtn">Use Anonymous</button>
+        <button class="btn" id="saveNameBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---------------- CONFIG ----------------
+    // Paste your Apps Script Web App URL here
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyz6nSDLH5Wo_aHrkWngO-SuruYrmaQIiRfy_tP56zQWQ6Rv5W5FCOL7utn8NjMAuR6OQ/exec';
+
+    // Fetch page size
+    const PAGE_SIZE = 18;
+
+    // ---------------- UTIL ----------------
+    const $ = (id)=>document.getElementById(id);
+    const ls = window.localStorage;
+    const uuid = ()=>{ // light uuid
+      return 'u-' + Math.random().toString(36).slice(2,10) + '-' + Date.now().toString(36);
+    }
+    const isoNow = ()=>new Date().toISOString();
+
+    // ---------------- SESSION ----------------
+    function ensureUser(){
+      let name = ls.getItem('cc_name');
+      let userId = ls.getItem('cc_userId');
+      if(!userId){
+        userId = uuid(); ls.setItem('cc_userId', userId);
+      }
+      if(!name){
+        showUserModal();
+      } else {
+        setUserUI(name, userId);
+      }
+    }
+    function setUserUI(name, userId){
+      $('userGreeting').textContent = `Hi, ${name}`;
+      $('myNamePreview').textContent = name;
+      $('meAvatar').textContent = name.slice(0,1).toUpperCase();
+      $('name').value = name;
+    }
+    function showUserModal(){
+      $('userModal').classList.remove('hidden');
+      $('startupName').focus();
+    }
+
+    $('saveNameBtn').addEventListener('click', ()=>{
+      const v = $('startupName').value.trim() || 'Anonymous';
+      ls.setItem('cc_name', v);
+      if(!ls.getItem('cc_userId')) ls.setItem('cc_userId', uuid());
+      $('userModal').classList.add('hidden');
+      setUserUI(v, ls.getItem('cc_userId'));
+      loadMessages(true);
+    });
+    $('skipNameBtn').addEventListener('click', ()=>{
+      ls.setItem('cc_name','Anonymous');
+      if(!ls.getItem('cc_userId')) ls.setItem('cc_userId', uuid());
+      $('userModal').classList.add('hidden');
+      setUserUI('Anonymous', ls.getItem('cc_userId'));
+      loadMessages(true);
+    });
+    $('changeUserBtn').addEventListener('click', ()=>{ showUserModal(); $('startupName').value = ls.getItem('cc_name') || ''; });
+
+    // ---------------- UI toggles ----------------
+    $('composeToggle').addEventListener('click', ()=> {
+      const c = $('composer'); c.style.display = c.style.display === 'none' ? 'flex' : 'none';
+    });
+
+    // ---------------- LINK PREVIEW ----------------
+    $('link').addEventListener('change', async ()=>{
+      const url = $('link').value.trim(); const area = $('linkPreviewArea'); area.innerHTML='';
+      if(!url) return;
+      try{
+        const res = await fetch(`${SCRIPT_URL}?action=meta&url=${encodeURIComponent(url)}`);
+        const meta = await res.json();
+        if(meta && meta.title){
+          area.innerHTML = renderLinkPreview(meta);
+        } else area.innerHTML = `<div class="small" style="margin-top:8px">No preview available</div>`;
+      }catch(e){ area.innerHTML = `<div class="small" style="margin-top:8px">No preview</div>`; console.warn(e); }
+    });
+    function renderLinkPreview(meta){
+      return `<div class="link-preview">
+        ${meta.image ? `<img src="${meta.image}" alt="preview"/>` : ''}
+        <div>
+          <div style="font-weight:700">${escapeHtml(meta.title||meta.site||'Link')}</div>
+          <div class="small">${escapeHtml(meta.description||'')}</div>
+          <div class="small" style="margin-top:6px">${escapeHtml(meta.url)}</div>
+        </div>
+      </div>`;
+    }
+
+    // ---------------- IMAGE PREVIEW client-side ----------------
+    let lastImageDataUrl = null;
+    $('imageFile').addEventListener('change', async (ev)=>{
+      const f = ev.target.files[0]; const area = $('imgPreviewArea'); area.innerHTML='';
+      if(!f) { lastImageDataUrl = null; return; }
+      if(f.size > 3_000_000){ alert('Image too large (max ~3MB). Resize or choose a smaller file.'); $('imageFile').value=''; return; }
+      const data = await readFileAsDataURL(f);
+      lastImageDataUrl = data;
+      area.innerHTML = `<div style="margin-top:8px"><img src="${data}" style="max-width:220px;border-radius:8px"/></div>`;
+    });
+    function readFileAsDataURL(file){
+      return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); });
+    }
+
+    // ---------------- SEND message ----------------
+    $('sendBtn').addEventListener('click', async ()=>{
+      const name = $('name').value.trim() || 'Anonymous';
+      const text = $('text').value.trim();
+      const link = $('link').value.trim();
+      const userId = ls.getItem('cc_userId');
+      if(!text && !link && !lastImageDataUrl){ alert('Type something or attach an image/link.'); return; }
+      const payload = { action:'add', name, text, link, ts: isoNow(), userId, image: lastImageDataUrl };
+      // optimistic UI
+      appendLocalMessage({ id:'pending-'+Date.now(), ts: payload.ts, userId, name, text, link, image: (lastImageDataUrl? lastImageDataUrl: '') }, true);
+      $('sendBtn').disabled = true; $('sendBtn').textContent='Sending...';
+      try{
+        const res = await fetch(SCRIPT_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const j = await res.json();
+        // refresh to get authoritative data (or you can replace pending item)
+        await loadMessages(true);
+        $('text').value=''; $('link').value=''; $('imageFile').value=''; $('imgPreviewArea').innerHTML=''; lastImageDataUrl = null;
+      }catch(err){
+        alert('Send failed — check console.'); console.error(err);
+      }finally{ $('sendBtn').disabled=false; $('sendBtn').textContent='Send'; }
+    });
+
+    // ---------------- LOAD / PAGINATION ----------------
+    let feedOffset = 0; // how many messages already loaded (0 = newest)
+    let loading = false, totalMessages = 0;
+    async function loadMessages(reset){
+      if(loading) return;
+      loading = true;
+      if(reset){ feedOffset = 0; $('feed').innerHTML=''; }
+      $('feedHint').textContent = 'Loading...';
+      try{
+        const res = await fetch(`${SCRIPT_URL}?action=list&start=${feedOffset}&limit=${PAGE_SIZE}`);
+        const j = await res.json();
+        totalMessages = j.total || 0;
+        const msgs = j.messages || [];
+        // since server returns newest-first slice, we append them in order of newest->oldest; to show newest at top we insert them at top
+        if(reset){
+          renderMessages(msgs);
+        } else {
+          renderMessages(msgs, false);
+        }
+        feedOffset += msgs.length;
+        if(feedOffset >= totalMessages) $('feedHint').textContent = 'No more messages';
+        else $('feedHint').textContent = 'Scroll to load more';
+      }catch(err){ console.error(err); $('feedHint').textContent = 'Failed to load'; }
+      finally{ loading = false; }
+    }
+
+    function renderMessages(messages, replace=true){
+      const feed = $('feed');
+      if(replace) feed.innerHTML = '';
+      // messages array is newest-first. We want to display newest on top. Append in order.
+      messages.forEach(m=>{
+        // skip empty
+        appendLocalMessage(m, false);
+      });
+    }
+
+    // append message to feed; optimistic = true places a temporary highlight
+    function appendLocalMessage(m, optimistic=false){
+      const feed = $('feed');
+      // create DOM
+      const el = document.createElement('div'); el.className='msg'; el.dataset.id = m.id;
+      el.innerHTML = `
+        <div class="avatar">${escapeHtml((m.name||'A').slice(0,1).toUpperCase())}</div>
+        <div class="body">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div style="font-weight:700">${escapeHtml(m.name||'Anonymous')}</div>
+            <div class="small">${escapeHtml(new Date(m.ts||m.date||'').toLocaleString())}</div>
+          </div>
+          <div class="meta">${escapeHtml(m.text||'')}</div>
+          ${m.image? `<img class="shared" src="${m.image}" alt="shared image"/>`: ''}
+          ${m.link? `<a class="small" href="${escapeHtml(m.link)}" target="_blank">${escapeHtml(m.link)}</a>` : ''}
+        </div>
+      `;
+      // actions (edit/delete) if owner
+      const myId = ls.getItem('cc_userId');
+      if(m.userId && m.userId === myId){
+        const act = document.createElement('div'); act.className='actions'; act.style.marginLeft='8px';
+        const eb = document.createElement('button'); eb.className='editBtn'; eb.textContent='Edit';
+        const db = document.createElement('button'); db.className='delBtn'; db.textContent='Delete';
+        eb.onclick = ()=> openEdit(m);
+        db.onclick = ()=> doDelete(m.id);
+        el.appendChild(act);
+        act.appendChild(eb); act.appendChild(db);
+      }
+      // optimistic message goes at top
+      if(optimistic) feed.insertBefore(el, feed.firstChild);
+      else feed.insertBefore(el, feed.firstChild);
+    }
+
+    // ---------------- EDIT / DELETE ----------------
+    let editingId = null;
+    function openEdit(m){
+      editingId = m.id;
+      $('editName').value = m.name || ls.getItem('cc_name') || 'Anonymous';
+      $('editText').value = m.text || '';
+      $('editLink').value = m.link || '';
+      $('editModal').classList.remove('hidden');
+    }
+    $('cancelEditBtn').addEventListener('click', ()=>{ $('editModal').classList.add('hidden'); editingId = null; });
+    $('saveEditBtn').addEventListener('click', async ()=>{
+      if(!editingId) return;
+      const payload = {
+        action:'edit',
+        id: editingId,
+        userId: ls.getItem('cc_userId'),
+        name: $('editName').value.trim() || 'Anonymous',
+        text: $('editText').value.trim() || '',
+        link: $('editLink').value.trim() || ''
+      };
+      try{
+        const res = await fetch(SCRIPT_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const j = await res.json();
+        if(j.ok){ $('editModal').classList.add('hidden'); editingId=null; await loadMessages(true); }
+        else alert('Edit failed: ' + (j.error||'unknown'));
+      }catch(err){ console.error(err); alert('Edit failed'); }
+    });
+
+    async function doDelete(id){
+      if(!confirm('Delete message?')) return;
+      const payload = { action:'delete', id, userId: ls.getItem('cc_userId') };
+      try{
+        const res = await fetch(SCRIPT_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const j = await res.json();
+        if(j.ok) await loadMessages(true);
+        else alert('Delete failed: ' + (j.error||'unauthorized'));
+      }catch(err){ console.error(err); alert('Delete failed'); }
+    }
+
+    // ---------------- HELPERS ----------------
+    function escapeHtml(s){ if(!s) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+    // refresh button
+    $('refreshBtn').addEventListener('click', ()=> loadMessages(true));
+
+    // initial
+    document.addEventListener('DOMContentLoaded', ()=>{
+      $('composer').style.display='flex';
+      ensureUser();
+      // initially load
+      loadMessages(true);
+      // infinite: when feed scrolls near bottom, load more
+      const feed = $('feed');
+      feed.addEventListener('scroll', ()=>{
+        if(loading) return;
+        if(feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 60){
+          if(feedOffset < totalMessages) loadMessages(false);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
